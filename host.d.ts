@@ -1,4 +1,4 @@
-declare module "@code-yeongyu/senpi" {
+declare module "@mariozechner/pi-coding-agent" {
 export interface ExtensionContext {
 cwd: string;
 hasUI: boolean;

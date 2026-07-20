@@ -1,6 +1,8 @@
-# Senpi Continuous Learning
+# Pi Continuous Learning
 
-An autonomous, model-specific learning extension for Senpi. It treats every
+https://github.com/ThewindMom/pi-continuous-learning
+
+An autonomous, model-specific learning extension for Pi. It treats every
 learned rule as a hypothesis, tests one hypothesis at a time, and deploys only
 artifacts that pass offline replay and online treatment/control evidence.
 
@@ -9,15 +11,15 @@ artifacts that pass offline replay and online treatment/control evidence.
 The extension is installed at:
 
 ```text
-~/.senpi/agent/extensions/selective-learning/index.ts
+~/.pi/agent/extensions/pi-continuous-learning/index.ts
 ```
 
-Senpi loads it through:
+Pi loads it through:
 
 ```json
 {
   "extensions": [
-    "/home/thewind/.senpi/agent/extensions/selective-learning/index.ts"
+    "/home/you/.pi/agent/extensions/pi-continuous-learning/index.ts"
   ]
 }
 ```
@@ -140,7 +142,7 @@ user-authored active memories remain eligible for runtime injection.
 State is private and project/model scoped:
 
 ```text
-~/.senpi/continuous-learning-hybrid/v3/
+~/.pi/continuous-learning-hybrid/v3/
 ```
 
 - Directories use mode `0700`.
@@ -175,7 +177,7 @@ Run RLM and GEPA:
   replay-input.json replay-artifact.json \
   --provider openai-codex \
   --model gpt-5.6-sol \
-  --signing-key-file ~/.senpi/continuous-learning-hybrid/v3/optimizer-signing.key
+  --signing-key-file ~/.pi/continuous-learning-hybrid/v3/optimizer-signing.key
 ```
 
 Import the resulting artifact:
@@ -198,8 +200,11 @@ bun run lint
 bun run build
 ```
 
+The extension follows `PI_CODING_AGENT_DIR`, so Pi-compatible distributions
+such as Senpi keep their own agent and state roots without a separate build.
+
 The test suite covers statistical promotion, stratified overlap, replay
 freshness, train/validation/test isolation, destructive artifact rejection,
 model revalidation, concurrent sessions, CAS writes, modified-artifact
 quarantine, forged nominations, semantic federation, global shutdown, secret
-scrubbing, migration, and the real Senpi extension lifecycle.
+scrubbing, migration, and the real Pi extension lifecycle.

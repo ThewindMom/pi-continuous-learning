@@ -13,8 +13,8 @@ afterEach(async () => {
 
 describe("project identity", () => {
   test("deduplicates clones across Git transport variants", async () => {
-    const first = await fs.mkdtemp(path.join(os.tmpdir(), "senpi-identity-a-"));
-    const second = await fs.mkdtemp(path.join(os.tmpdir(), "senpi-identity-b-"));
+    const first = await fs.mkdtemp(path.join(os.tmpdir(), "pi-identity-a-"));
+    const second = await fs.mkdtemp(path.join(os.tmpdir(), "pi-identity-b-"));
     roots.push(first, second);
     for (const [root, remote] of [
       [first, "git@github.com:Example/Repository.git"],

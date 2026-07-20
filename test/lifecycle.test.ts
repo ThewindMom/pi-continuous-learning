@@ -17,14 +17,14 @@ describe("extension lifecycle", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "hybrid-lifecycle-"));
     roots.push(root);
     const previousHome = process.env.HOME;
-    const previousRoot = process.env.SENPI_CONTINUOUS_LEARNING_ROOT;
+    const previousRoot = process.env.PI_CONTINUOUS_LEARNING_ROOT;
     process.env.HOME = root;
-    process.env.SENPI_CONTINUOUS_LEARNING_ROOT = path.join(root, ".senpi", "continuous-learning-hybrid", "v2");
+    process.env.PI_CONTINUOUS_LEARNING_ROOT = path.join(root, ".pi", "continuous-learning-hybrid", "v3");
     try {
       const cwd = path.join(root, "project");
       await fs.mkdir(cwd, { recursive: true });
       const projectId = projectIdForPath(cwd);
-      const statePath = path.join(root, ".senpi", "continuous-learning-hybrid", "v2", "projects", projectId, "state.json");
+      const statePath = path.join(root, ".pi", "continuous-learning-hybrid", "v3", "projects", projectId, "state.json");
       const memory: LearnedMemory = {
         id: "unicode-normalization",
         title: "Normalize Unicode usernames",
@@ -109,8 +109,8 @@ describe("extension lifecycle", () => {
       expect(commands.has("learn")).toBe(true);
     } finally {
       process.env.HOME = previousHome;
-      if (previousRoot === undefined) delete process.env.SENPI_CONTINUOUS_LEARNING_ROOT;
-      else process.env.SENPI_CONTINUOUS_LEARNING_ROOT = previousRoot;
+      if (previousRoot === undefined) delete process.env.PI_CONTINUOUS_LEARNING_ROOT;
+      else process.env.PI_CONTINUOUS_LEARNING_ROOT = previousRoot;
     }
   });
 });

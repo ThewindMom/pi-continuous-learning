@@ -1,1 +1,1 @@
-"""Offline optimizer tooling for Senpi continuous learning."""
+"""Offline optimizer tooling for Pi continuous learning."""

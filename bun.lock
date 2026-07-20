@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "senpi-continuous-learning-hybrid",
+      "name": "pi-continuous-learning",
       "dependencies": {
         "zod": "^4.3.6",
       },

@@ -1,8 +1,9 @@
 {
-  "name": "senpi-continuous-learning-hybrid",
+  "name": "pi-continuous-learning",
+  "description": "Autonomous causal continuous-learning extension for Pi",
   "private": true,
   "type": "module",
-  "repository": "https://github.com/ThewindMom/senpi-continuous-learning",
+  "repository": "https://github.com/ThewindMom/pi-continuous-learning",
   "scripts": {
     "test": "bun test ./test",
     "typecheck": "bunx tsc --noEmit",

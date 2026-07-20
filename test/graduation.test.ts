@@ -52,16 +52,16 @@ describe("graduation artifacts", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "hybrid-graduate-"));
     roots.push(root);
     expect(checkGraduation(memory, "2026-07-20T00:00:00.000Z").eligible).toBe(true);
-    await graduateMemory(memory, "agents", root, path.join(root, ".senpi", "agent"));
-    await graduateMemory(memory, "agents", root, path.join(root, ".senpi", "agent"));
+    await graduateMemory(memory, "agents", root, path.join(root, ".pi", "agent"));
+    await graduateMemory(memory, "agents", root, path.join(root, ".pi", "agent"));
     const agents = await fs.readFile(path.join(root, "AGENTS.md"), "utf8");
-    expect(agents.match(/<!-- senpi-learned:unicode-usernames -->/g)).toHaveLength(1);
+    expect(agents.match(/<!-- pi-learned:unicode-usernames -->/g)).toHaveLength(1);
   });
 
   test("writes a standalone skill and refuses overwrite", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "hybrid-skill-"));
     roots.push(root);
-    const agentDir = path.join(root, ".senpi", "agent");
+    const agentDir = path.join(root, ".pi", "agent");
     const destination = await graduateMemory(procedureMemory, "skill", root, agentDir);
     expect(await fs.readFile(destination, "utf8")).toContain("Normalize each username to NFC");
     expect(graduateMemory(procedureMemory, "skill", root, agentDir)).rejects.toThrow("Refusing to overwrite");
@@ -70,7 +70,7 @@ describe("graduation artifacts", () => {
   test("rolls back only an unchanged autonomous artifact", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "hybrid-rollback-"));
     roots.push(root);
-    const destination = await graduateMemory(memory, "agents", root, path.join(root, ".senpi", "agent"));
+    const destination = await graduateMemory(memory, "agents", root, path.join(root, ".pi", "agent"));
     const record = {
       memoryId: memory.id,
       target: "agents" as const,
@@ -81,13 +81,13 @@ describe("graduation artifacts", () => {
     };
     const rolledBack = await rollbackGraduation(record, memory, "2026-07-21T00:00:00.000Z", "explicit correction");
     expect(rolledBack.status).toBe("rolled_back");
-    expect(await fs.readFile(destination, "utf8")).not.toContain("senpi-learned:unicode-usernames");
+    expect(await fs.readFile(destination, "utf8")).not.toContain("pi-learned:unicode-usernames");
   });
 
   test("quarantines a modified managed block instead of leaving it active", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "hybrid-quarantine-"));
     roots.push(root);
-    const destination = await graduateMemory(memory, "agents", root, path.join(root, ".senpi", "agent"));
+    const destination = await graduateMemory(memory, "agents", root, path.join(root, ".pi", "agent"));
     const existing = await fs.readFile(destination, "utf8");
     await fs.writeFile(destination, existing.replace(memory.rule, `${memory.rule} User-modified note.`));
     const record = {
@@ -100,8 +100,8 @@ describe("graduation artifacts", () => {
     };
     const rolledBack = await rollbackGraduation(record, memory, "2026-07-21T00:00:00.000Z", "autonomy disabled");
     expect(rolledBack.status).toBe("rolled_back");
-    expect(await fs.readFile(destination, "utf8")).not.toContain("senpi-learned:unicode-usernames");
-    expect((await fs.readdir(path.join(root, ".senpi-learning-quarantine"))).length).toBe(1);
+    expect(await fs.readFile(destination, "utf8")).not.toContain("pi-learned:unicode-usernames");
+    expect((await fs.readdir(path.join(root, ".pi-learning-quarantine"))).length).toBe(1);
   });
 
   test("concurrent AGENTS writes never silently lose a fulfilled update", async () => {
@@ -109,20 +109,20 @@ describe("graduation artifacts", () => {
     roots.push(root);
     const second = { ...memory, id: "unicode-usernames-second", title: "Second Unicode rule" };
     const results = await Promise.allSettled([
-      graduateMemory(memory, "agents", root, path.join(root, ".senpi", "agent")),
-      graduateMemory(second, "agents", root, path.join(root, ".senpi", "agent")),
+      graduateMemory(memory, "agents", root, path.join(root, ".pi", "agent")),
+      graduateMemory(second, "agents", root, path.join(root, ".pi", "agent")),
     ]);
     const fulfilled = results.filter((result) => result.status === "fulfilled").length;
     const content = await fs.readFile(path.join(root, "AGENTS.md"), "utf8");
-    expect(content.match(/<!-- senpi-learned:/g)?.length ?? 0).toBe(fulfilled);
+    expect(content.match(/<!-- pi-learned:/g)?.length ?? 0).toBe(fulfilled);
   });
 
   test("quarantines the whole AGENTS file when managed markers are damaged", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "hybrid-marker-damage-"));
     roots.push(root);
-    const destination = await graduateMemory(memory, "agents", root, path.join(root, ".senpi", "agent"));
+    const destination = await graduateMemory(memory, "agents", root, path.join(root, ".pi", "agent"));
     const existing = await fs.readFile(destination, "utf8");
-    await fs.writeFile(destination, existing.replace("<!-- senpi-learned:", "<!-- damaged-senpi-learned:"));
+    await fs.writeFile(destination, existing.replace("<!-- pi-learned:", "<!-- damaged-pi-learned:"));
     const record = {
       memoryId: memory.id,
       target: "agents" as const,
@@ -134,7 +134,7 @@ describe("graduation artifacts", () => {
     const rolledBack = await rollbackGraduation(record, memory, "2026-07-21T00:00:00.000Z", "autonomy disabled");
     expect(rolledBack.status).toBe("rolled_back");
     expect(await fs.readFile(destination, "utf8")).toBe("");
-    expect((await fs.readdir(path.join(root, ".senpi-learning-quarantine"))).length).toBe(1);
+    expect((await fs.readdir(path.join(root, ".pi-learning-quarantine"))).length).toBe(1);
   });
 
   test("quarantines orphaned generated skill directories", async () => {
@@ -157,13 +157,25 @@ describe("graduation artifacts", () => {
     expect(fs.access(destination)).rejects.toThrow();
   });
 
-  test("startup cleanup quarantines malformed Senpi fragments", async () => {
+  test("startup cleanup quarantines malformed legacy Senpi fragments", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "hybrid-malformed-startup-"));
     roots.push(root);
     const destination = path.join(root, "AGENTS.md");
     await fs.writeFile(destination, "User content\n<!-- senpi-learned:broken -->\nunsafe autonomous guidance\n");
     expect(await cleanupOrphanedAgentBlocks(root, new Set())).toBe(1);
     expect(await fs.readFile(destination, "utf8")).toBe("");
-    expect((await fs.readdir(path.join(root, ".senpi-learning-quarantine"))).length).toBe(1);
+    expect((await fs.readdir(path.join(root, ".pi-learning-quarantine"))).length).toBe(1);
+  });
+
+  test("preserves active legacy markers without duplicating Pi guidance", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-legacy-marker-"));
+    roots.push(root);
+    const destination = path.join(root, "AGENTS.md");
+    await fs.writeFile(destination, `<!-- senpi-learned:${memory.id} -->\nlegacy guidance\n<!-- /senpi-learned:${memory.id} -->\n`);
+    expect(await cleanupOrphanedAgentBlocks(root, new Set([memory.id]))).toBe(0);
+    await graduateMemory(memory, "agents", root, path.join(root, ".pi", "agent"));
+    const content = await fs.readFile(destination, "utf8");
+    expect(content).toContain(`<!-- senpi-learned:${memory.id} -->`);
+    expect(content).not.toContain(`<!-- pi-learned:${memory.id} -->`);
   });
 });

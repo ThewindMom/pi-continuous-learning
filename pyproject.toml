@@ -1,5 +1,5 @@
 [project]
-name = "senpi-continuous-learning-optimizer"
+name = "pi-continuous-learning-optimizer"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [

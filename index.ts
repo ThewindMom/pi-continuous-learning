@@ -1,5 +1,5 @@
 import type { UserMessage } from "@earendil-works/pi-ai/compat";
-import type { ExtensionAPI, ExtensionContext } from "@code-yeongyu/senpi";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
@@ -86,21 +86,27 @@ interface ActiveRun {
   startedAt: number;
 }
 
-const SENPI_ROOT = path.join(os.homedir(), ".senpi");
-const STATE_ROOT = process.env.SENPI_CONTINUOUS_LEARNING_ROOT ?? path.join(SENPI_ROOT, "continuous-learning-hybrid", "v3");
-const V2_STATE_ROOT = path.join(SENPI_ROOT, "continuous-learning-hybrid", "v2");
-const LEGACY_STATE_ROOT = path.join(SENPI_ROOT, "selective-learning", "v1");
+function resolveAgentDir(): string {
+  const configured = process.env.PI_CODING_AGENT_DIR;
+  if (configured) return path.resolve(configured.replace(/^~(?=$|\/)/, os.homedir()));
+  const installedAgentDir = path.resolve(import.meta.dirname, "../..");
+  if (path.basename(installedAgentDir) === "agent") return installedAgentDir;
+  return path.join(os.homedir(), ".pi", "agent");
+}
+
+const AGENT_DIR = resolveAgentDir();
+const PI_ROOT = path.dirname(AGENT_DIR);
+const STATE_ROOT = process.env.PI_CONTINUOUS_LEARNING_ROOT ?? process.env.SENPI_CONTINUOUS_LEARNING_ROOT ?? path.join(PI_ROOT, "continuous-learning-hybrid", "v3");
+const V2_STATE_ROOT = path.join(PI_ROOT, "continuous-learning-hybrid", "v2");
+const LEGACY_STATE_ROOT = path.join(PI_ROOT, "selective-learning", "v1");
 const DIAGNOSTICS_PATH = path.join(STATE_ROOT, "diagnostics.jsonl");
 const OPTIMIZER_KEY_PATH = path.join(STATE_ROOT, "optimizer-signing.key");
-const AGENT_DIR = path.join(SENPI_ROOT, "agent");
 const MIGRATION_MARKER = path.join(STATE_ROOT, "legacy-migration-v3.json");
 
 async function ensureLegacyMigration(): Promise<number> {
   if (await fileExists(MIGRATION_MARKER)) return 0;
-  const counts = await Promise.all([
-    sanitizeLegacyCorpus(path.join(SENPI_ROOT, "continuous-learning")),
-    sanitizeLegacyCorpus(path.join(os.homedir(), ".pi", "continuous-learning")),
-  ]);
+  const roots = [...new Set([PI_ROOT, path.join(os.homedir(), ".pi"), path.join(os.homedir(), ".senpi")])];
+  const counts = await Promise.all(roots.map((root) => sanitizeLegacyCorpus(path.join(root, "continuous-learning"))));
   await fs.mkdir(path.dirname(MIGRATION_MARKER), { recursive: true, mode: 0o700 });
   await fs.writeFile(MIGRATION_MARKER, `${JSON.stringify({ completedAt: new Date().toISOString() })}\n`, { mode: 0o600 });
   return counts.reduce((sum, count) => sum + count, 0);
@@ -1012,10 +1018,8 @@ export default function selectiveLearning(pi: ExtensionAPI): void {
         return;
       }
       if (command === "migrate") {
-        const redactions = await Promise.all([
-          sanitizeLegacyCorpus(path.join(SENPI_ROOT, "continuous-learning")),
-          sanitizeLegacyCorpus(path.join(os.homedir(), ".pi", "continuous-learning")),
-        ]);
+        const roots = [...new Set([PI_ROOT, path.join(os.homedir(), ".pi"), path.join(os.homedir(), ".senpi")])];
+        const redactions = await Promise.all(roots.map((root) => sanitizeLegacyCorpus(path.join(root, "continuous-learning"))));
         await persist();
         ctx.ui.notify(`Migration complete; sanitized ${redactions.reduce((sum, count) => sum + count, 0)} sensitive value(s)`, "info");
         return;

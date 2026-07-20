@@ -9,15 +9,15 @@ interface Request {
   prompt: string;
 }
 
-const executable = Bun.which("senpi");
-if (!executable) throw new Error("senpi executable is not available on PATH");
+const executable = Bun.which("pi") ?? Bun.which("senpi");
+if (!executable) throw new Error("Pi-compatible executable is not available on PATH");
 const realExecutable = await fs.realpath(executable);
 const distDirectory = path.dirname(realExecutable);
-const senpi = await import(pathToFileURL(path.join(distDirectory, "index.js")).href);
+const pi = await import(pathToFileURL(path.join(distDirectory, "index.js")).href);
 const { ModelRuntime } = await import(pathToFileURL(path.join(distDirectory, "core", "model-runtime.js")).href);
 const request = JSON.parse(await Bun.stdin.text()) as Request;
-const agentDir = senpi.getAgentDir();
-const settingsManager = senpi.SettingsManager.create(agentDir);
+const agentDir = pi.getAgentDir();
+const settingsManager = pi.SettingsManager.create(agentDir);
 const modelRuntime = ModelRuntime.createSync({
   authPath: path.join(agentDir, "auth.json"),
   modelsPath: path.join(agentDir, "models.json"),
@@ -25,7 +25,7 @@ const modelRuntime = ModelRuntime.createSync({
 const model = modelRuntime.getModel(request.provider, request.model);
 if (!model) throw new Error(`Model not found: ${request.provider}/${request.model}`);
 
-const loader = new senpi.DefaultResourceLoader({
+const loader = new pi.DefaultResourceLoader({
   cwd: process.cwd(),
   agentDir,
   settingsManager,
@@ -37,12 +37,12 @@ const loader = new senpi.DefaultResourceLoader({
   systemPrompt: request.system,
 });
 await loader.reload();
-const { session } = await senpi.createAgentSession({
+const { session } = await pi.createAgentSession({
   cwd: process.cwd(),
   model,
   thinkingLevel: "medium",
   resourceLoader: loader,
-  sessionManager: senpi.SessionManager.inMemory(process.cwd()),
+  sessionManager: pi.SessionManager.inMemory(process.cwd()),
   settingsManager,
   tools: [],
 });

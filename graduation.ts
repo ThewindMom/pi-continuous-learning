@@ -34,7 +34,7 @@ export function graduationPreview(memory: LearnedMemory, target: GraduationTarge
 
 async function atomicWrite(filePath: string, content: string, expected?: string | null): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  const lockPath = `${filePath}.senpi-lock`;
+  const lockPath = `${filePath}.pi-lock`;
   try {
     await fs.mkdir(lockPath);
   } catch (error) {
@@ -73,7 +73,7 @@ async function atomicWrite(filePath: string, content: string, expected?: string 
 }
 
 function agentsBlock(memory: LearnedMemory): string {
-  return `<!-- senpi-learned:${memory.id} -->\n## Learned project guidance\n\nModel scope: ${memory.model}\n\n${renderMemoryGuidance(memory)}\n<!-- /senpi-learned:${memory.id} -->\n`;
+  return `<!-- pi-learned:${memory.id} -->\n## Learned project guidance\n\nModel scope: ${memory.model}\n\n${renderMemoryGuidance(memory)}\n<!-- /pi-learned:${memory.id} -->\n`;
 }
 
 export async function cleanupOrphanedAgentBlocks(
@@ -90,15 +90,15 @@ export async function cleanupOrphanedAgentBlocks(
   }
   let removed = 0;
   const next = existing.replace(
-    /<!-- senpi-learned:([^\s]+) -->[\s\S]*?<!-- \/senpi-learned:\1 -->\n?/g,
+    /<!-- (?:pi|senpi)-learned:([^\s]+) -->[\s\S]*?<!-- \/(?:pi|senpi)-learned:\1 -->\n?/g,
     (block, memoryId: string) => {
       if (activeMemoryIds.has(memoryId)) return block;
       removed += 1;
       return "";
     },
   ).trimEnd();
-  if (/senpi-learned:/.test(next)) {
-    const quarantine = path.join(path.dirname(destination), ".senpi-learning-quarantine");
+  if (/(?:pi|senpi)-learned:/.test(next)) {
+    const quarantine = path.join(path.dirname(destination), ".pi-learning-quarantine");
     await atomicWrite(path.join(quarantine, `AGENTS-malformed-${Date.now()}.md`), existing, null);
     await atomicWrite(destination, "", existing);
     return removed + 1;
@@ -208,8 +208,9 @@ export async function graduateMemory(
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       exists = false;
     }
-    const marker = `<!-- senpi-learned:${memory.id} -->`;
-    if (existing.includes(marker)) return destination;
+    const marker = `<!-- pi-learned:${memory.id} -->`;
+    const legacyMarker = `<!-- senpi-learned:${memory.id} -->`;
+    if (existing.includes(marker) || existing.includes(legacyMarker)) return destination;
     const block = agentsBlock(memory);
     await atomicWrite(destination, `${existing.trimEnd()}${existing.trim() ? "\n\n" : ""}${block}`, exists ? existing : null);
     return destination;
@@ -236,16 +237,16 @@ export async function rollbackGraduation(
     if (record.target === "agents") {
       const block = agentsBlock(memory);
       const escapedId = memory.id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const match = existing.match(new RegExp(`<!-- senpi-learned:${escapedId} -->[\\s\\S]*?<!-- \\/senpi-learned:${escapedId} -->\\n?`));
+      const match = existing.match(new RegExp(`<!-- (?:pi|senpi)-learned:${escapedId} -->[\\s\\S]*?<!-- \\/(?:pi|senpi)-learned:${escapedId} -->\\n?`));
       if (!match) {
-        const quarantine = path.join(path.dirname(record.destination), ".senpi-learning-quarantine");
+        const quarantine = path.join(path.dirname(record.destination), ".pi-learning-quarantine");
         await atomicWrite(path.join(quarantine, `AGENTS-${memory.id}-${Date.now()}.md`), existing, null);
         await atomicWrite(record.destination, "", existing);
         reason = `${reason}; marker-damaged AGENTS file quarantined`;
       } else {
         const modified = digest(block) !== record.contentHash || match[0].trimEnd() !== block.trimEnd();
         if (modified) {
-          const quarantine = path.join(path.dirname(record.destination), ".senpi-learning-quarantine");
+          const quarantine = path.join(path.dirname(record.destination), ".pi-learning-quarantine");
           await atomicWrite(path.join(quarantine, `${memory.id}-${Date.now()}.md`), match[0], null);
         }
         const next = existing.replace(match[0], "").trimEnd();

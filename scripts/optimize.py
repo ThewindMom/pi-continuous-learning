@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent
 os.environ["PATH"] = f"{ROOT / 'node_modules' / '.bin'}:{os.environ.get('PATH', '')}"
 
 
-class SenpiLM(BaseLM):
+class PiLM(BaseLM):
     def __init__(self, provider: str, model: str, bridge: Path):
         super().__init__(model=f"{provider}/{model}", max_tokens=4000, cache=False)
         self.provider = provider
@@ -53,7 +53,7 @@ class SenpiLM(BaseLM):
             check=False,
         )
         if completed.returncode != 0:
-            raise RuntimeError(completed.stderr.strip() or "Senpi model bridge failed")
+            raise RuntimeError(completed.stderr.strip() or "Pi model bridge failed")
         response = json.loads(completed.stdout)
         output = response["output"]
         usage = response.get("usage", {})
@@ -71,12 +71,13 @@ class SenpiLM(BaseLM):
 
 def make_interpreter() -> dspy.PythonInterpreter:
     cutoff = time.time() - 60 * 60
-    for stale in Path(tempfile.gettempdir()).glob("senpi-dspy-runner-*.js"):
-        try:
-            if stale.stat().st_mtime < cutoff:
-                stale.unlink()
-        except FileNotFoundError:
-            pass
+    for pattern in ("pi-dspy-runner-*.js", "senpi-dspy-runner-*.js"):
+        for stale in Path(tempfile.gettempdir()).glob(pattern):
+            try:
+                if stale.stat().st_mtime < cutoff:
+                    stale.unlink()
+            except FileNotFoundError:
+                pass
     upstream_runner = Path(dspy.__file__).parent / "primitives" / "runner.js"
     runner_source = upstream_runner.read_text().replace(
         'import { readLines } from "https://deno.land/std@0.186.0/io/mod.ts";',
@@ -96,7 +97,7 @@ def make_interpreter() -> dspy.PythonInterpreter:
   if (pending) yield pending;
 }""",
     )
-    with tempfile.NamedTemporaryFile("w", prefix="senpi-dspy-runner-", suffix=".js", delete=False) as handle:
+    with tempfile.NamedTemporaryFile("w", prefix="pi-dspy-runner-", suffix=".js", delete=False) as handle:
         handle.write(runner_source)
         runner = Path(handle.name)
     runner.chmod(0o600)
@@ -234,7 +235,7 @@ def main() -> None:
     for candidate in candidates:
         partition_cases(candidate)
 
-    lm = SenpiLM(args.provider, args.model, args.bridge)
+    lm = PiLM(args.provider, args.model, args.bridge)
     dspy.configure(lm=lm)
     training_context = [{
         **{key: value for key, value in candidate.items() if key != "cases"},
