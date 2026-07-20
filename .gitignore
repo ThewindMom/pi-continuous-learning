@@ -1,0 +1,10 @@
+.venv/
+node_modules/
+dist/
+coverage/
+*.egg-info/
+__pycache__/
+*.pyc
+*.log
+*.tmp
+optimizer-output.json

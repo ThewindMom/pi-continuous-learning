@@ -1,0 +1,24 @@
+{
+  "name": "senpi-continuous-learning-hybrid",
+  "private": true,
+  "type": "module",
+  "repository": "https://github.com/ThewindMom/senpi-continuous-learning",
+  "scripts": {
+    "test": "bun test ./test",
+    "typecheck": "bunx tsc --noEmit",
+    "build": "bun build ./index.ts --target bun --packages external --outdir ./dist",
+    "replay": "bun ./scripts/replay.ts",
+    "lint": "oxlint index.ts core.ts autonomy.ts replay.ts global-skills.ts graduation.ts revalidation.ts synthesis.ts security.ts validation.ts optimizer-provenance.ts scripts/*.ts test/*.ts"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "deno": "latest",
+    "oxlint": "^1.74.0",
+    "pyodide": "latest",
+    "typescript": "latest"
+  },
+  "trustedDependencies": ["deno"]
+}

@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "model": "openai-codex/gpt-5.6-sol",
+  "generatedAt": "2026-07-20T00:00:00.000Z",
+  "previousMetaMemory": "Prefer bounded parse-transform procedures and reject unrelated graph tasks.",
+  "candidates": [
+    {
+      "id": "unicode-normalization",
+      "title": "Normalize Unicode usernames",
+      "rule": "Normalize usernames to Unicode NFC before deduplication.",
+      "kind": "procedure",
+      "keywords": ["unicode", "nfc", "username"],
+      "procedure": {
+        "goal": "Normalize and deduplicate usernames consistently.",
+        "steps": ["Normalize each username to NFC.", "Deduplicate normalized usernames."],
+        "verification": ["Run the username normalization tests."],
+        "recovery": ["Restore the prior implementation when verification fails."],
+        "decomposition": "parse-transform"
+      },
+      "sourceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "cases": [
+        {"episodeId":"p1","prompt":"Normalize a Unicode username to NFC","response":"Verified","expectedRelevant":true,"verified":true,"corrected":false,"taskStratum":"parse-transform/short","split":"train"},
+        {"episodeId":"p2","prompt":"Deduplicate Unicode usernames after NFC normalization","response":"Verified","expectedRelevant":true,"verified":true,"corrected":false,"taskStratum":"parse-transform/short","split":"test"},
+        {"episodeId":"n1","prompt":"Sort graph nodes topologically","response":"Verified","expectedRelevant":false,"verified":true,"corrected":false,"taskStratum":"graph-walk/short","split":"train"},
+        {"episodeId":"n2","prompt":"Redact authorization headers","response":"Verified","expectedRelevant":false,"verified":true,"corrected":false,"taskStratum":"parse-transform/short","split":"validation"},
+        {"episodeId":"n3","prompt":"Compare semantic versions","response":"Verified","expectedRelevant":false,"verified":true,"corrected":false,"taskStratum":"review-synthesize/short","split":"train"},
+        {"episodeId":"n4","prompt":"Partition work by budget","response":"Verified","expectedRelevant":false,"verified":true,"corrected":false,"taskStratum":"plan-execute/short","split":"test"}
+      ]
+    }
+  ]
+}

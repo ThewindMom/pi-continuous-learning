@@ -1,0 +1,16 @@
+{
+  "analysisProvider": "openai-codex",
+  "analysisModel": "gpt-5.4-mini",
+  "analysisMinEpisodes": 6,
+  "maxEpisodes": 200,
+  "autoAnalyze": true,
+  "autonomous": true,
+  "candidateControlRate": 0.5,
+  "activeControlRate": 0.15,
+  "globalSkillMinProjects": 3,
+  "globalSkillMinTreatmentTrials": 50,
+  "autoOptimize": true,
+  "optimizerPython": ".venv/bin/python",
+  "optimizerMaxMetricCalls": 6,
+  "optimizerBatchSize": 4
+}
