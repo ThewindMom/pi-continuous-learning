@@ -1,16 +1,24 @@
 {
-  "analysisProvider": "openai-codex",
-  "analysisModel": "gpt-5.4-mini",
-  "analysisMinEpisodes": 6,
-  "maxEpisodes": 200,
-  "autoAnalyze": true,
-  "autonomous": true,
-  "candidateControlRate": 0.5,
-  "activeControlRate": 0.15,
-  "globalSkillMinProjects": 3,
-  "globalSkillMinTreatmentTrials": 50,
-  "autoOptimize": true,
-  "optimizerPython": ".venv/bin/python",
-  "optimizerMaxMetricCalls": 6,
-  "optimizerBatchSize": 4
+  "idleMs": 60000,
+  "historyBatchSize": 100,
+  "maxApprovedMemories": 100,
+  "maxCandidates": 50,
+  "maxAttributions": 200,
+  "maxInjectedMemories": 3,
+  "maxInjectionChars": 2400,
+  "repeatThreshold": 3,
+  "replayMinimumMatches": 3,
+  "replayMinimumSuccessRate": 0.5,
+  "canaryRate": 0.5,
+  "promotionMinimumTrials": 3,
+  "promotionMinimumHelpful": 2,
+  "rollbackMinimumTrials": 3,
+  "rollbackHarmfulRate": 0.67,
+  "graduationMinimumHelpful": 3,
+  "graduationMinimumAgeDays": 14,
+  "notifications": {
+    "promotions": true,
+    "rollbacks": true,
+    "failures": true
+  }
 }

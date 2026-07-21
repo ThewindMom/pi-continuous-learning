@@ -1,6 +1,6 @@
 {
   "name": "pi-continuous-learning",
-  "description": "Autonomous causal continuous-learning extension for Pi",
+  "description": "A small cursor-based continuous-learning extension for Pi",
   "private": true,
   "type": "module",
   "repository": "https://github.com/ThewindMom/pi-continuous-learning",
@@ -8,8 +8,7 @@
     "test": "bun test ./test",
     "typecheck": "bunx tsc --noEmit",
     "build": "bun build ./index.ts --target bun --packages external --outdir ./dist",
-    "replay": "bun ./scripts/replay.ts",
-    "lint": "oxlint index.ts core.ts autonomy.ts replay.ts global-skills.ts graduation.ts revalidation.ts synthesis.ts security.ts validation.ts optimizer-provenance.ts scripts/*.ts test/*.ts"
+    "lint": "oxlint index.ts core.ts history.ts graduation.ts security.ts test/*.ts"
   },
   "dependencies": {
     "zod": "^4.3.6"

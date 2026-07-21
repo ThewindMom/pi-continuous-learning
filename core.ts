@@ -1,259 +1,282 @@
+import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
 
-export type MemoryStatus = "candidate" | "active" | "conflicted" | "retired";
-export type MemoryScope = "project" | "global";
-export type MemoryKind = "guidance" | "procedure";
-export type MemoryOrigin = "user" | "synthesized" | "revalidated" | "federated";
+import { z } from "zod";
 
-export interface ProcedureSpec {
-  goal: string;
-  steps: string[];
-  verification: string[];
-  recovery: string[];
-  decomposition: string;
-}
+export const STORE_VERSION = 4 as const;
 
 export interface MemoryEvidence {
   observations: number;
   helpful: number;
   harmful: number;
   neutral: number;
-  lastHelpfulAt?: string;
-  lastHarmfulAt?: string;
 }
 
-export type ExperimentArm = "treatment" | "control";
-
-export interface ArmEvidence {
-  trials: number;
-  verified: number;
-  corrected: number;
-  tokens: number;
-  cost: number;
-  latencyMs: number;
-  failedAttempts: number;
-  strata: Record<string, StratumEvidence>;
+export interface Procedure {
+  goal: string;
+  steps: string[];
+  verification: string[];
+  recovery: string[];
+  decomposition?: string;
 }
 
-export interface StratumEvidence {
-  trials: number;
-  verified: number;
-  corrected: number;
-  tokens: number;
-  cost: number;
-  latencyMs: number;
-  failedAttempts: number;
-}
-
-export interface MemoryExperiment {
-  treatment: ArmEvidence;
-  control: ArmEvidence;
-  decision: "exploring" | "promoted" | "rejected";
-  score?: number;
-  probabilityPositive?: number;
-  probabilityLift?: number;
-  updatedAt?: string;
-}
-
-export interface ReplayEvidence {
-  status: "pending" | "passed" | "failed" | "stale";
-  model: string;
-  score: number;
-  cases: number;
-  falsePositiveRate: number;
-  sourceHash: string;
-  artifactHash?: string;
-  evaluatedAt?: string;
-  optimizer?: "native" | "rlm-gepa";
-  equivalenceClass?: string;
-  semanticScore?: number;
-  heldOutDomains?: number;
-  longContextScore?: number;
-  domainScores?: Record<string, number>;
-  attempts?: number;
-  lastAttemptAt?: string;
-  caseIds?: string[];
-  fresh?: boolean;
-}
-
-export interface LearnedMemory {
-  id: string;
-  title: string;
-  rule: string;
-  keywords: string[];
-  scope: MemoryScope;
-  kind: MemoryKind;
-  origin: MemoryOrigin;
-  procedure?: ProcedureSpec;
-  projectId: string;
-  model: string;
-  status: MemoryStatus;
-  confidence: number;
-  evidence: MemoryEvidence;
-  sourceEpisodeIds: string[];
-  createdAt: string;
-  updatedAt: string;
-  lastUsedAt?: string;
-  experiment?: MemoryExperiment;
-  replay?: ReplayEvidence;
-  revalidationOf?: string;
-  revisions?: MemoryRevision[];
-}
-
-export interface MemoryRevision {
-  capturedAt: string;
-  rule: string;
-  keywords: string[];
-  procedure?: ProcedureSpec;
-  replay?: ReplayEvidence;
-  reason: string;
-}
-
-export interface LearningEpisode {
-  id: string;
-  status: "pending" | "settled";
-  timestamp: string;
-  projectId: string;
-  model: string;
-  prompt: string;
-  response: string;
-  autonomous: boolean;
-  memoryAssignments: Array<{ memoryId: string; arm: ExperimentArm }>;
-  injectedMemoryIds: string[];
-  toolCalls: number;
-  toolErrors: number;
-  verified: boolean;
-  corrected: boolean;
-  inputTokens: number;
-  outputTokens: number;
-  cost: number;
-  latencyMs: number;
-  failedAttempts: number;
-  taskStratum: string;
-}
-
-export interface LearningStore {
-  version: 3;
-  memories: LearnedMemory[];
-  facts: LearnedFact[];
-  episodes: LearningEpisode[];
-  analyzedEpisodeIds: string[];
-  graduations: GraduationRecord[];
-  automation: { enabled: boolean };
-  optimizerMemory?: { model: string; summary: string; epochs: number; updatedAt: string };
-  maintenanceAt?: string;
-}
-
-export interface GraduationRecord {
-  memoryId: string;
+export interface DeploymentRecord {
   target: "agents" | "skill";
   destination: string;
   contentHash: string;
   graduatedAt: string;
-  status: "active" | "rolled_back" | "modified";
+  status: "active" | "rolled_back" | "quarantined";
   rolledBackAt?: string;
   reason?: string;
 }
 
-export interface LearnedFact {
+export interface ApprovedMemory {
   id: string;
-  title: string;
-  content: string;
-  keywords: string[];
-  projectId: string;
-  model: string;
-  confidence: number;
-  status: "active" | "retired";
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface MemorySelection {
-  memory: LearnedMemory;
-  relevance: number;
-  overlap: number;
-}
-
-export interface SynthesizedCandidate {
   title: string;
   rule: string;
   keywords: string[];
-  evidenceEpisodeIds: string[];
-  confidence: number;
-  kind?: MemoryKind;
-  procedure?: ProcedureSpec;
-}
-
-export interface SelectionContext {
-  prompt: string;
+  scope: "project" | "global";
+  kind: "rule" | "guidance" | "procedure";
+  procedure?: Procedure;
   projectId: string;
-  model: string;
+  model?: string;
+  origin: "candidate" | "legacy" | "manual" | "synthesized" | "revalidated" | "federated" | "user";
+  confidence: number;
+  evidence: MemoryEvidence;
+  sourceInteractionIds?: string[];
+  sourceEpisodeIds?: string[];
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt?: string;
+  disabled?: boolean;
+  disabledReason?: string;
+  status?: "active" | "candidate" | "retired" | "conflicted";
+  deployment?: DeploymentRecord;
 }
 
-const STOP_WORDS = new Set([
-  "about", "after", "again", "before", "being", "could", "from", "have", "into", "just", "more", "should",
-  "that", "their", "then", "there", "these", "they", "this", "through", "using", "when", "where", "which", "with",
-  "would", "your", "fix", "implement", "change", "code", "task",
-]);
+export interface CandidateReplay {
+  matches: number;
+  helpful: number;
+  harmful: number;
+}
 
-const MAX_MEMORIES = 2;
-const MAX_INJECTION_CHARS = 600;
-const MAX_FACTS = 1;
-const MIN_CONFIDENCE = 0.65;
-const MIN_RELEVANCE = 0.34;
-const MIN_OVERLAP = 2;
-const GENERIC_KEYWORDS = new Set([
-  "agent", "always", "code", "data", "error", "file", "fix", "good", "input", "invalid",
-  "negative", "output", "project", "result", "test", "tool", "use", "user", "value", "work",
-]);
+export interface CandidateCanary {
+  trials: number;
+  helpful: number;
+  harmful: number;
+}
 
-export function newStore(): LearningStore {
-  return {
-    version: 3,
-    memories: [],
-    facts: [],
-    episodes: [],
-    analyzedEpisodeIds: [],
-    graduations: [],
-    automation: { enabled: true },
+export interface Candidate {
+  id: string;
+  title: string;
+  rule: string;
+  keywords: string[];
+  projectId: string;
+  state: "observed" | "canary" | "rejected";
+  evidenceInteractionIds: string[];
+  replay: CandidateReplay;
+  canary: CandidateCanary;
+  createdAt: string;
+  updatedAt: string;
+  rejectedReason?: string;
+}
+
+export interface GraduationRecord extends DeploymentRecord {
+  memoryId: string;
+}
+
+export type LearnedMemory = ApprovedMemory;
+
+export interface Attribution {
+  interactionId: string;
+  memoryIds: string[];
+  candidateIds: string[];
+  injectedAt: string;
+  outcome?: "helpful" | "harmful" | "neutral";
+}
+
+export interface HistoryCursor {
+  sessionId?: string;
+  sessionFile?: string;
+  entryId?: string;
+  previousInteractionId?: string;
+  processedAt?: string;
+  attributions: Attribution[];
+}
+
+export interface LearningStore {
+  version: typeof STORE_VERSION;
+  approvedMemories: ApprovedMemory[];
+  candidates: Candidate[];
+  historyCursor: HistoryCursor;
+}
+
+const EvidenceSchema = z.object({
+  observations: z.number().int().nonnegative(),
+  helpful: z.number().int().nonnegative(),
+  harmful: z.number().int().nonnegative(),
+  neutral: z.number().int().nonnegative(),
+});
+
+const ProcedureSchema = z.object({
+  goal: z.string().min(1),
+  steps: z.array(z.string().min(1)),
+  verification: z.array(z.string().min(1)),
+  recovery: z.array(z.string().min(1)),
+});
+
+const DeploymentSchema = z.object({
+  target: z.enum(["agents", "skill"]),
+  destination: z.string().min(1),
+  contentHash: z.string().min(1),
+  graduatedAt: z.string().min(1),
+  status: z.enum(["active", "rolled_back", "quarantined"]),
+  rolledBackAt: z.string().optional(),
+  reason: z.string().optional(),
+});
+
+const ApprovedMemorySchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  rule: z.string().min(1),
+  keywords: z.array(z.string().min(1)),
+  scope: z.enum(["project", "global"]),
+  kind: z.enum(["rule", "procedure"]),
+  procedure: ProcedureSchema.optional(),
+  projectId: z.string().min(1),
+  model: z.string().optional(),
+  origin: z.enum(["candidate", "legacy", "manual"]),
+  confidence: z.number().min(0).max(1),
+  evidence: EvidenceSchema,
+  sourceInteractionIds: z.array(z.string().min(1)),
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+  lastUsedAt: z.string().optional(),
+  disabled: z.boolean().optional(),
+  disabledReason: z.string().optional(),
+  status: z.enum(["active", "candidate", "retired", "conflicted"]).optional(),
+  deployment: DeploymentSchema.optional(),
+});
+
+const CandidateSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  rule: z.string().min(1),
+  keywords: z.array(z.string().min(1)),
+  projectId: z.string().min(1),
+  state: z.enum(["observed", "canary", "rejected"]),
+  evidenceInteractionIds: z.array(z.string().min(1)),
+  replay: z.object({
+    matches: z.number().int().nonnegative(),
+    helpful: z.number().int().nonnegative(),
+    harmful: z.number().int().nonnegative(),
+  }),
+  canary: z.object({
+    trials: z.number().int().nonnegative(),
+    helpful: z.number().int().nonnegative(),
+    harmful: z.number().int().nonnegative(),
+  }),
+  createdAt: z.string().min(1),
+  updatedAt: z.string().min(1),
+  rejectedReason: z.string().optional(),
+});
+
+const AttributionSchema = z.object({
+  interactionId: z.string().min(1),
+  memoryIds: z.array(z.string().min(1)),
+  candidateIds: z.array(z.string().min(1)),
+  injectedAt: z.string().min(1),
+  outcome: z.enum(["helpful", "harmful", "neutral"]).optional(),
+});
+
+const StoreSchema = z.object({
+  version: z.literal(STORE_VERSION),
+  approvedMemories: z.array(ApprovedMemorySchema),
+  candidates: z.array(CandidateSchema),
+  historyCursor: z.object({
+    sessionId: z.string().optional(),
+    sessionFile: z.string().optional(),
+    entryId: z.string().optional(),
+    previousInteractionId: z.string().optional(),
+    processedAt: z.string().optional(),
+    attributions: z.array(AttributionSchema),
+  }),
+});
+
+export interface LearningConfig {
+  idleMs: number;
+  historyBatchSize: number;
+  maxApprovedMemories: number;
+  maxCandidates: number;
+  maxAttributions: number;
+  maxInjectedMemories: number;
+  maxInjectionChars: number;
+  repeatThreshold: number;
+  replayMinimumMatches: number;
+  replayMinimumSuccessRate: number;
+  canaryRate: number;
+  promotionMinimumTrials: number;
+  promotionMinimumHelpful: number;
+  rollbackMinimumTrials: number;
+  rollbackHarmfulRate: number;
+  graduationMinimumHelpful: number;
+  graduationMinimumAgeDays: number;
+  notifications: {
+    promotions: boolean;
+    rollbacks: boolean;
+    failures: boolean;
   };
 }
 
-export function tokenize(value: string): string[] {
-  const matches = value.normalize("NFC").toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
-  return [...new Set(matches.filter((token) => token.length >= 3 && !STOP_WORDS.has(token)))];
-}
+export const ConfigSchema = z.object({
+  idleMs: z.number().int().nonnegative(),
+  historyBatchSize: z.number().int().positive().max(500),
+  maxApprovedMemories: z.number().int().positive().max(500),
+  maxCandidates: z.number().int().positive().max(500),
+  maxAttributions: z.number().int().positive().max(500),
+  maxInjectedMemories: z.number().int().positive().max(10),
+  maxInjectionChars: z.number().int().positive().max(10_000),
+  repeatThreshold: z.number().int().min(2).max(20),
+  replayMinimumMatches: z.number().int().min(2).max(100),
+  replayMinimumSuccessRate: z.number().min(0).max(1),
+  canaryRate: z.number().min(0).max(1),
+  promotionMinimumTrials: z.number().int().min(1).max(100),
+  promotionMinimumHelpful: z.number().int().min(1).max(100),
+  rollbackMinimumTrials: z.number().int().min(1).max(100),
+  rollbackHarmfulRate: z.number().min(0).max(1),
+  graduationMinimumHelpful: z.number().int().min(1).max(1_000),
+  graduationMinimumAgeDays: z.number().int().nonnegative().max(3_650),
+  notifications: z.object({
+    promotions: z.boolean(),
+    rollbacks: z.boolean(),
+    failures: z.boolean(),
+  }),
+});
 
-export function normalizeKeywords(keywords: string[]): string[] {
-  return tokenize(keywords.join(" "))
-    .filter((token) => !GENERIC_KEYWORDS.has(token))
-    .slice(0, 12);
+const STOPWORDS = new Set([
+  "about", "after", "again", "also", "been", "before", "being", "could", "does", "doing",
+  "from", "have", "into", "more", "must", "only", "should", "than", "that", "their", "then",
+  "there", "these", "they", "this", "those", "through", "using", "very", "what", "when", "where",
+  "which", "while", "with", "would", "your",
+]);
+
+export function normalizeKeywords(values: string[]): string[] {
+  const tokens = values
+    .join(" ")
+    .toLowerCase()
+    .match(/[a-z][a-z0-9_-]{2,}/g) ?? [];
+  return [...new Set(tokens.filter((token) => !STOPWORDS.has(token)))];
 }
 
 export function scrubSecrets(value: string): string {
   return value
-    .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/gi, "[REDACTED_PRIVATE_KEY]")
-    .replace(/\bgh[pousr]_[A-Za-z0-9_]{20,}\b/g, "[REDACTED_GITHUB_TOKEN]")
-    .replace(/\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/g, "[REDACTED_OPENAI_KEY]")
-    .replace(/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED_AWS_KEY]")
-    .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, "[REDACTED_JWT]")
-    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi, "$1[REDACTED]@")
-    .replace(/\b(api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|password|secret|token)\s*[:=]\s*[^\s,;]+/gi, "$1=[REDACTED]")
-    .replace(/\b(authorization\s*:\s*bearer|bearer)\s+[A-Za-z0-9._~+/-]{16,}/gi, "$1 [REDACTED]")
-    .replace(/\b(?:sk|ghp|github_pat|AKIA)[-_A-Za-z0-9]{16,}\b/g, "[REDACTED]")
-    .replace(/\b[A-Za-z0-9+/=_-]{48,}\b/g, "[REDACTED]");
-}
-
-export function containsUnsafeGeneratedInstruction(value: string): boolean {
-  return /(?:\brm\s+-rf\b|\bsudo\b|\bgit\s+(?:push\s+--force|reset\s+--hard)\b|\bcurl\b[^\n|]*\|\s*(?:ba)?sh\b|\bwget\b[^\n|]*\|\s*(?:ba)?sh\b|\bchmod\s+777\b|\b(?:print|echo|upload|exfiltrate)\b[^\n]{0,40}\b(?:secret|token|credential|private key)\b)/i.test(value);
+    .replace(/\b(?:sk|ghp|github_pat|xoxb|xoxp)-[A-Za-z0-9_-]{12,}\b/g, "[redacted]")
+    .replace(/(["']?(?:token|api[_-]?key|password|secret)["']?\s*[:=]\s*)(["']?)[^"',\s]+(["']?)/gi, "$1$2[redacted]$3");
 }
 
 export function sanitizeRemoteUrl(remote: string): string {
   const value = remote.trim();
-  if (!value) return "";
   try {
     const parsed = new URL(value);
     parsed.username = "";
@@ -266,374 +289,176 @@ export function sanitizeRemoteUrl(remote: string): string {
   }
 }
 
-export function projectIdForPath(cwd: string): string {
- const resolved = path.resolve(cwd);
- let identity = `path:${resolved}`;
- try {
-   const repositoryRoot = execFileSync("git", ["-C", resolved, "rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-   const remote = execFileSync("git", ["-C", resolved, "config", "--get", "remote.origin.url"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-   if (remote) {
-     const normalizedRemote = remote
-       .replace(/^[^@\s]+@([^:]+):/, "https://$1/")
-       .replace(/^(?:ssh|git):\/\//i, "https://")
-       .replace(/^(https:\/\/)[^/@]+@/i, "$1")
-       .replace(/:443\//, "/")
-       .replace(/[?#].*$/, "")
-       .replace(/\/+$/, "")
-       .replace(/\.git\/?$/, "")
-       .toLowerCase();
-     identity = `git:${normalizedRemote}#${path.relative(repositoryRoot, resolved) || "."}`;
-   }
- } catch {
-   // Non-Git projects remain path-scoped.
- }
- return createHash("sha256").update(identity).digest("hex").slice(0, 16);
-}
-
-function clamp(value: number, minimum = 0.1, maximum = 0.9): number {
-  return Math.min(maximum, Math.max(minimum, value));
-}
-
-function shouldRetire(memory: LearnedMemory): boolean {
-  const trials = memory.evidence.helpful + memory.evidence.harmful + memory.evidence.neutral;
-  if (trials < 4 || memory.evidence.harmful < 2) return false;
-  const utility = (memory.evidence.helpful - memory.evidence.harmful * 2) / trials;
-  return utility <= 0;
-}
-
-function withEvidence(memory: LearnedMemory, evidence: MemoryEvidence, confidence: number, now: string): LearnedMemory {
-  const updated = { ...memory, evidence, confidence: clamp(confidence), updatedAt: now };
-  return shouldRetire(updated) ? { ...updated, status: "retired" } : updated;
-}
-
-export function applyOutcome(
-  memory: LearnedMemory,
-  outcome: { verified: boolean; harmful: boolean },
-  now: string,
-): LearnedMemory {
-  if (memory.status === "retired") return memory;
-  if (outcome.harmful) {
-    return withEvidence(
-      memory,
-      { ...memory.evidence, harmful: memory.evidence.harmful + 1, lastHarmfulAt: now },
-      memory.confidence - 0.12,
-      now,
-    );
-  }
-  if (outcome.verified) {
-    return withEvidence(
-      memory,
-      { ...memory.evidence, helpful: memory.evidence.helpful + 1, lastHelpfulAt: now },
-      memory.confidence + 0.02,
-      now,
-    );
-  }
-  return withEvidence(
-    memory,
-    { ...memory.evidence, neutral: memory.evidence.neutral + 1 },
-    memory.confidence,
-    now,
-  );
-}
-
-export function applyCorrection(memory: LearnedMemory, now: string): LearnedMemory {
-  if (memory.status === "retired") return memory;
-  return withEvidence(
-    memory,
-    { ...memory.evidence, harmful: memory.evidence.harmful + 1, lastHarmfulAt: now },
-    memory.confidence - 0.2,
-    now,
-  );
-}
-
-export function selectMemories(memories: LearnedMemory[], context: SelectionContext): MemorySelection[] {
-  const promptTokens = new Set(tokenize(context.prompt));
-  return memories
-    .flatMap((memory): MemorySelection[] => {
-      const minimumConfidence = memory.status === "candidate" ? 0.55 : MIN_CONFIDENCE;
-      if (!["active", "candidate"].includes(memory.status) || memory.confidence < minimumConfidence) return [];
-      if (memory.model !== "*" && memory.model !== context.model) return [];
-      if (memory.scope === "project" && memory.projectId !== context.projectId) return [];
-      const keywordTokens = new Set(normalizeKeywords(memory.keywords));
-      if (keywordTokens.size < MIN_OVERLAP) return [];
-      const overlap = [...keywordTokens].filter((token) => promptTokens.has(token)).length;
-      if (overlap < MIN_OVERLAP) return [];
-      const relevance = overlap / Math.min(5, Math.max(1, keywordTokens.size));
-      if (relevance < MIN_RELEVANCE) return [];
-      return [{ memory, relevance, overlap }];
-    })
-    .sort((left, right) =>
-      right.relevance * right.memory.confidence - left.relevance * left.memory.confidence ||
-      right.memory.confidence - left.memory.confidence ||
-      left.memory.id.localeCompare(right.memory.id),
-    )
-    .slice(0, MAX_MEMORIES);
-}
-
-export function selectFacts(facts: LearnedFact[], context: SelectionContext): LearnedFact[] {
-  const promptTokens = new Set(tokenize(context.prompt));
-  return facts
-    .filter((fact) => fact.status === "active" && fact.confidence >= MIN_CONFIDENCE)
-    .filter((fact) => fact.projectId === context.projectId && fact.model === context.model)
-    .filter((fact) => normalizeKeywords(fact.keywords).filter((token) => promptTokens.has(token)).length >= MIN_OVERLAP)
-    .sort((left, right) => right.confidence - left.confidence || left.id.localeCompare(right.id))
-    .slice(0, MAX_FACTS);
-}
-
-export function renderMemoryGuidance(memory: Pick<LearnedMemory, "kind" | "rule" | "procedure">): string {
+export function renderMemoryGuidance(memory: Pick<ApprovedMemory, "kind" | "rule" | "procedure">): string {
   if (memory.kind !== "procedure" || !memory.procedure) return memory.rule;
   return [
-    `Goal: ${memory.procedure.goal}`,
+    memory.procedure.goal,
     ...memory.procedure.steps.map((step, index) => `${index + 1}. ${step}`),
     ...memory.procedure.verification.map((step) => `Verify: ${step}`),
-    ...memory.procedure.recovery.map((step) => `Recover: ${step}`),
-    `Decomposition: ${memory.procedure.decomposition}`,
   ].join("\n");
 }
 
-export function memoryArtifactHash(memory: Pick<LearnedMemory, "model" | "kind" | "rule" | "keywords" | "procedure">): string {
-  return createHash("sha256").update(JSON.stringify({
-    model: memory.model,
-    guidance: renderMemoryGuidance(memory),
-    keywords: normalizeKeywords(memory.keywords).sort(),
-  })).digest("hex");
+function stableId(prefix: string, value: string): string {
+  return `${prefix}-${createHash("sha256").update(value).digest("hex").slice(0, 16)}`;
 }
 
-export function buildInjection(selected: MemorySelection[]): string {
-  if (selected.length === 0) return "";
-  let output = "Relevant learned guidance (apply only if it fits the task):";
-  for (const { memory } of selected) {
-    const prefix = "\n- ";
-    const remaining = MAX_INJECTION_CHARS - output.length - prefix.length;
-    if (remaining <= 0) break;
-    const guidance = renderMemoryGuidance(memory);
-    if (guidance.length > remaining) continue;
-    output += `${prefix}${guidance}`;
+export function candidateId(rule: string): string {
+  return stableId("candidate", normalizeKeywords([rule]).join("\0"));
+}
+
+export function approvedMemoryId(rule: string): string {
+  return stableId("memory", normalizeKeywords([rule]).join("\0"));
+}
+
+function normalizeRemote(remote: string): string {
+  const trimmed = remote.trim().replace(/\.git$/, "");
+  const scp = trimmed.match(/^[^@]+@([^:]+):(.+)$/);
+  if (scp) return `${scp[1]}/${scp[2]}`.toLowerCase();
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.hostname}${parsed.pathname}`.replace(/^\/+|\/+$/g, "").toLowerCase();
+  } catch {
+    return trimmed.toLowerCase();
   }
-  return output.slice(0, MAX_INJECTION_CHARS);
 }
 
-export function buildHybridInjection(selected: MemorySelection[], facts: LearnedFact[]): string {
-  if (selected.length === 0 && facts.length === 0) return "";
-  const lines = ["## Evidence-gated learned guidance"];
-  for (const { memory } of selected) {
-    const line = `- ${renderMemoryGuidance(memory)}`;
-    if ([...lines, line].join("\n").length <= MAX_INJECTION_CHARS) lines.push(line);
+export function projectIdForPath(cwd: string): string {
+  try {
+    const rootResult = Bun.spawnSync(["git", "-C", cwd, "rev-parse", "--show-toplevel"]);
+    const root = rootResult.exitCode === 0 ? rootResult.stdout.toString().trim() : path.resolve(cwd);
+    const remoteResult = Bun.spawnSync(["git", "-C", root, "config", "--get", "remote.origin.url"]);
+    const identity = remoteResult.exitCode === 0 && remoteResult.stdout.toString().trim()
+      ? normalizeRemote(remoteResult.stdout.toString())
+      : path.resolve(root);
+    return stableId("project", identity);
+  } catch {
+    return stableId("project", path.resolve(cwd));
   }
-  for (const fact of facts) {
-    const line = `- Project fact: ${fact.content}`;
-    if ([...lines, line].join("\n").length <= MAX_INJECTION_CHARS) lines.push(line);
-  }
-  return lines.length > 1 ? lines.join("\n") : "";
 }
 
-function slug(value: string): string {
-  return tokenize(value).slice(0, 6).join("-") || "memory";
-}
-
-function jaccard(left: string[], right: string[]): number {
-  const a = new Set(left.flatMap(tokenize));
-  const b = new Set(right.flatMap(tokenize));
-  const union = new Set([...a, ...b]);
-  if (union.size === 0) return 0;
-  return [...a].filter((token) => b.has(token)).length / union.size;
-}
-
-const OPPOSING_TERMS: Array<[string, string]> = [
-  ["always", "never"], ["avoid", "prefer"], ["disable", "enable"], ["skip", "ensure"], ["throw", "return"],
-];
-
-export function memoriesContradict(
-  left: Pick<LearnedMemory, "rule" | "keywords">,
-  right: Pick<LearnedMemory, "rule" | "keywords">,
-): boolean {
-  if (jaccard(normalizeKeywords(left.keywords), normalizeKeywords(right.keywords)) < 0.5) return false;
-  const leftRule = left.rule.toLowerCase();
-  const rightRule = right.rule.toLowerCase();
-  return OPPOSING_TERMS.some(([a, b]) =>
-    (leftRule.includes(a) && rightRule.includes(b)) || (leftRule.includes(b) && rightRule.includes(a)),
-  );
-}
-
-export function mergeSynthesizedCandidates(
-  store: LearningStore,
-  candidates: SynthesizedCandidate[],
-  context: { projectId: string; model: string; now: string },
-): LearningStore {
-  const memories = [...store.memories];
-  for (const candidate of candidates.slice(0, 3)) {
-const keywords = normalizeKeywords(candidate.keywords);
-const rule = scrubSecrets(candidate.rule.trim()).slice(0, 360);
-if (keywords.length < 2 || rule.length < 20 || containsUnsafeGeneratedInstruction(rule)) continue;
-    const sourceEpisodeIds = [...new Set(candidate.evidenceEpisodeIds)].slice(0, 8);
-    if (sourceEpisodeIds.length < 3) continue;
-    const baseId = slug(candidate.title);
-    let id = baseId;
-    let suffix = 2;
-    while (memories.some((memory) => memory.id === id)) id = `${baseId}-${suffix++}`;
-    const confidence = clamp(candidate.confidence, 0.35, 0.85);
-    const procedure = candidate.kind === "procedure" && candidate.procedure &&
-      candidate.procedure.steps.length >= 2 && candidate.procedure.verification.length >= 1
-      ? {
-        goal: scrubSecrets(candidate.procedure.goal).slice(0, 240),
-        steps: candidate.procedure.steps.map((step) => scrubSecrets(step).slice(0, 240)).slice(0, 12),
-        verification: candidate.procedure.verification.map((step) => scrubSecrets(step).slice(0, 240)).slice(0, 6),
-        recovery: candidate.procedure.recovery.map((step) => scrubSecrets(step).slice(0, 240)).slice(0, 6),
-        decomposition: scrubSecrets(candidate.procedure.decomposition).slice(0, 80),
-      }
-      : undefined;
-    if (candidate.kind === "procedure" && !procedure) continue;
-    if (procedure && containsUnsafeGeneratedInstruction(JSON.stringify(procedure))) continue;
-    if (procedure && renderMemoryGuidance({ kind: "procedure", rule, procedure }).length > 520) continue;
-    const proposed: LearnedMemory = {
-      id,
-      title: scrubSecrets(candidate.title.trim()).slice(0, 100),
-      rule,
-      keywords,
-      scope: "project",
-      kind: procedure ? "procedure" : "guidance",
-      origin: "synthesized",
-      ...(procedure ? { procedure } : {}),
-      projectId: context.projectId,
-      model: context.model,
-      status: "candidate",
-      confidence,
-      evidence: { observations: sourceEpisodeIds.length, helpful: 0, harmful: 0, neutral: 0 },
-      sourceEpisodeIds,
-      createdAt: context.now,
-      updatedAt: context.now,
-    };
-    const duplicate = memories.find((memory) =>
-      memory.projectId === context.projectId && memory.model === context.model && jaccard(memory.keywords, keywords) >= 0.65,
-    );
-    if (duplicate && memoriesContradict(duplicate, proposed)) {
-      proposed.status = "conflicted";
-      memories.push(proposed);
-      continue;
-    }
-    if (duplicate) {
-      if (memoryArtifactHash(duplicate) === memoryArtifactHash(proposed)) {
-        const index = memories.indexOf(duplicate);
-        const mergedSources = [...new Set([...duplicate.sourceEpisodeIds, ...sourceEpisodeIds])];
-        memories[index] = {
-          ...duplicate,
-          sourceEpisodeIds: mergedSources,
-          evidence: { ...duplicate.evidence, observations: mergedSources.length },
-          updatedAt: context.now,
-        };
-      } else {
-        memories.push(proposed);
-      }
-      continue;
-    }
-    const conflicting = memories.some((memory) => memory.status === "active" && memoriesContradict(memory, proposed));
-    proposed.status = conflicting ? "conflicted" : "candidate";
-    memories.push(proposed);
-  }
-  return { ...store, memories };
-}
-
-export function isCorrectionPrompt(prompt: string): boolean {
- return /^(?:correction\s*:|that (?:was|is) wrong\b|your previous (?:answer|change|guidance) (?:was|is|caused)\b|revert (?:your|the) previous\b|undo (?:your|the|that) (?:previous )?(?:change|guidance)\b|the previous .{0,40}\b(?:broke|failed|was wrong)\b)/i.test(prompt.trim());
-}
-
-export function hasVerificationEvidence(response: string): boolean {
-  return /\b(?:tests?|typecheck|build|lint|verification)\b[^\n]{0,80}\b(?:pass(?:ed)?|clean|successful|0 fail)/i.test(response);
-}
-
-export function maintainStore(store: LearningStore, now: string): LearningStore {
-  const nowMs = Date.parse(now);
- let memories = store.memories.map((memory) => {
-    if (memory.status === "retired" || memory.status === "conflicted") return memory;
-    const ageDays = (nowMs - Date.parse(memory.updatedAt)) / 86_400_000;
-    if (memory.status === "candidate" && ageDays >= 28) return { ...memory, status: "retired" as const, updatedAt: now };
-    if (ageDays < 14) return memory;
-    const confidence = clamp(memory.confidence - Math.min(0.15, Math.floor(ageDays / 14) * 0.03));
-    return {
-      ...memory,
-      confidence,
-      status: confidence < MIN_CONFIDENCE && ageDays >= 30 ? "retired" as const : memory.status,
-      updatedAt: now,
-    };
- });
- const candidates = memories.filter((memory) => memory.status === "candidate")
-   .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
- const overflow = new Set(candidates.slice(64).map((memory) => memory.id));
- memories = memories.map((memory) => overflow.has(memory.id) ? { ...memory, status: "retired" as const, updatedAt: now } : memory);
- const protectedIds = new Set(store.graduations.map((record) => record.memoryId));
- const retainedRetired = new Set(memories.filter((memory) => memory.status === "retired")
-   .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
-   .slice(0, 128)
-   .map((memory) => memory.id));
- memories = memories.filter((memory) => memory.status !== "retired" || protectedIds.has(memory.id) || retainedRetired.has(memory.id));
-  return { ...store, memories, maintenanceAt: now };
-}
-
-function migrateArm(value: Partial<ArmEvidence> | undefined): ArmEvidence {
+export function newStore(): LearningStore {
   return {
-    trials: value?.trials ?? 0,
-    verified: value?.verified ?? 0,
-    corrected: value?.corrected ?? 0,
-    tokens: value?.tokens ?? 0,
-    cost: value?.cost ?? 0,
-    latencyMs: value?.latencyMs ?? 0,
-    failedAttempts: value?.failedAttempts ?? 0,
-    strata: value?.strata ?? {},
+    version: STORE_VERSION,
+    approvedMemories: [],
+    candidates: [],
+    historyCursor: { attributions: [] },
   };
 }
 
-function migrateMemory(memory: LearnedMemory): LearnedMemory {
- const kind = memory.kind === "procedure" && memory.procedure ? "procedure" : "guidance";
- const origin = memory.origin ?? (memory.revalidationOf ? "revalidated" : memory.sourceEpisodeIds.length > 0 ? "synthesized" : "user");
- if (!memory.experiment) return { ...memory, kind, origin, revisions: Array.isArray(memory.revisions) ? memory.revisions.slice(-8) : [] };
-  return {
-    ...memory,
- kind,
- origin,
-    revisions: Array.isArray(memory.revisions) ? memory.revisions.slice(-8) : [],
-    experiment: {
-      ...memory.experiment,
-      treatment: migrateArm(memory.experiment.treatment),
-      control: migrateArm(memory.experiment.control),
-    },
-  };
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
 }
 
-export function migrateStore(value: unknown): LearningStore {
-  if (!value || typeof value !== "object") return newStore();
-  const source = value as Partial<LearningStore>;
-  const episodes = Array.isArray(source.episodes)
-    ? source.episodes.map((episode) => ({
-      ...episode,
-      status: episode.status === "pending" ? "pending" as const : "settled" as const,
-      autonomous: typeof episode.autonomous === "boolean" ? episode.autonomous : true,
-      cost: typeof episode.cost === "number" ? episode.cost : 0,
-      latencyMs: typeof episode.latencyMs === "number" ? episode.latencyMs : 0,
-      failedAttempts: typeof episode.failedAttempts === "number" ? episode.failedAttempts : episode.toolErrors,
-      taskStratum: typeof episode.taskStratum === "string" ? episode.taskStratum : "legacy/unknown/unknown",
-      memoryAssignments: Array.isArray(episode.memoryAssignments)
-        ? episode.memoryAssignments
-        : (episode.injectedMemoryIds ?? []).map((memoryId) => ({ memoryId, arm: "treatment" as const })),
-    }))
+function asString(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function asNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
     : [];
+}
+
+function legacyEvidence(value: unknown): MemoryEvidence {
+  const evidence = asRecord(value);
   return {
-    version: 3,
-    memories: Array.isArray(source.memories) ? source.memories.map(migrateMemory) : [],
-    facts: Array.isArray(source.facts) ? source.facts : [],
-    episodes,
-    analyzedEpisodeIds: Array.isArray(source.analyzedEpisodeIds) ? source.analyzedEpisodeIds : [],
-    graduations: Array.isArray(source.graduations) ? source.graduations : [],
-    automation: source.automation && typeof source.automation.enabled === "boolean"
-      ? source.automation
-      : { enabled: true },
-    ...(source.optimizerMemory ? { optimizerMemory: source.optimizerMemory } : {}),
-    ...(typeof source.maintenanceAt === "string" ? { maintenanceAt: source.maintenanceAt } : {}),
+    observations: Math.max(0, Math.floor(asNumber(evidence?.observations, 0))),
+    helpful: Math.max(0, Math.floor(asNumber(evidence?.helpful, 0))),
+    harmful: Math.max(0, Math.floor(asNumber(evidence?.harmful, 0))),
+    neutral: Math.max(0, Math.floor(asNumber(evidence?.neutral, 0))),
   };
+}
+
+function legacyProcedure(value: unknown): Procedure | undefined {
+  const procedure = asRecord(value);
+  if (!procedure) return undefined;
+  const goal = asString(procedure.goal, "");
+  const steps = asStringArray(procedure.steps);
+  if (!goal || steps.length === 0) return undefined;
+  return {
+    goal,
+    steps,
+    verification: asStringArray(procedure.verification),
+    recovery: asStringArray(procedure.recovery),
+  };
+}
+
+function migrateLegacyStore(value: unknown): LearningStore {
+  const source = asRecord(value);
+  if (!source) return newStore();
+  const graduations = Array.isArray(source.graduations)
+    ? source.graduations.map(asRecord).filter((item): item is Record<string, unknown> => Boolean(item))
+    : [];
+  const activeDeployments = new Map<string, DeploymentRecord>();
+  for (const item of graduations) {
+    const memoryId = asString(item.memoryId, "");
+    const target = item.target === "skill" ? "skill" : item.target === "agents" ? "agents" : undefined;
+    const status = item.status === "rolled_back" || item.status === "quarantined" ? item.status : "active";
+    if (!memoryId || !target || status !== "active") continue;
+    activeDeployments.set(memoryId, {
+      target,
+      destination: asString(item.destination, ""),
+      contentHash: asString(item.contentHash, ""),
+      graduatedAt: asString(item.graduatedAt, new Date(0).toISOString()),
+      status,
+    });
+  }
+
+  const approvedMemories: ApprovedMemory[] = [];
+  const seen = new Set<string>();
+  for (const collection of [source.memories, source.facts]) {
+    if (!Array.isArray(collection)) continue;
+    for (const raw of collection) {
+      const item = asRecord(raw);
+      if (!item || item.status !== "active") continue;
+      const rule = asString(item.rule, asString(item.value, ""));
+      if (!rule) continue;
+      const id = asString(item.id, approvedMemoryId(rule));
+      if (seen.has(id)) continue;
+      const procedure = legacyProcedure(item.procedure);
+      const now = new Date().toISOString();
+      approvedMemories.push({
+        id,
+        title: asString(item.title, rule.slice(0, 72)),
+        rule,
+        keywords: normalizeKeywords([...asStringArray(item.keywords), rule]).slice(0, 16),
+        scope: item.scope === "global" ? "global" : "project",
+        kind: procedure ? "procedure" : "rule",
+        ...(procedure ? { procedure } : {}),
+        projectId: asString(item.projectId, "legacy"),
+        origin: "legacy",
+        confidence: Math.min(1, Math.max(0, asNumber(item.confidence, 0.75))),
+        evidence: legacyEvidence(item.evidence),
+        sourceInteractionIds: asStringArray(item.sourceEpisodeIds),
+        createdAt: asString(item.createdAt, now),
+        updatedAt: asString(item.updatedAt, now),
+        ...(activeDeployments.has(id) ? { deployment: activeDeployments.get(id) } : {}),
+      });
+      seen.add(id);
+    }
+  }
+
+  return {
+    ...newStore(),
+    approvedMemories,
+  };
+}
+
+export function parseStore(value: unknown): LearningStore {
+  const record = asRecord(value);
+  if (record?.version === STORE_VERSION) return StoreSchema.parse(value);
+  return migrateLegacyStore(value);
 }
 
 export async function loadStore(filePath: string): Promise<LearningStore> {
   try {
-    return migrateStore(JSON.parse(await fs.readFile(filePath, "utf8")));
+    return parseStore(JSON.parse(await fs.readFile(filePath, "utf8")));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return newStore();
     throw error;
@@ -641,10 +466,93 @@ export async function loadStore(filePath: string): Promise<LearningStore> {
 }
 
 export async function saveStore(filePath: string, store: LearningStore): Promise<void> {
+  const validated = StoreSchema.parse(store);
   await fs.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
   await fs.chmod(path.dirname(filePath), 0o700);
- const temporary = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  await fs.writeFile(temporary, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
+  const temporary = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  await fs.writeFile(temporary, `${JSON.stringify(validated, null, 2)}\n`, { mode: 0o600 });
   await fs.rename(temporary, filePath);
   await fs.chmod(filePath, 0o600);
+}
+
+function overlapScore(promptTokens: Set<string>, memory: Pick<ApprovedMemory, "keywords" | "confidence" | "evidence">): number {
+  const overlap = memory.keywords.filter((keyword) => promptTokens.has(keyword)).length;
+  if (overlap === 0) return 0;
+  const observations = Math.max(1, memory.evidence.observations);
+  const helpfulRate = memory.evidence.helpful / observations;
+  const harmfulRate = memory.evidence.harmful / observations;
+  return overlap * 3 + memory.confidence * 2 + helpfulRate - harmfulRate * 3;
+}
+
+export function selectApprovedMemories(
+  store: LearningStore,
+  prompt: string,
+  maxItems: number,
+  maxChars: number,
+): ApprovedMemory[] {
+  const promptTokens = new Set(normalizeKeywords([prompt]));
+  const ranked = store.approvedMemories
+    .map((memory) => ({ memory, score: overlapScore(promptTokens, memory) }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score || left.memory.id.localeCompare(right.memory.id));
+  const selected: ApprovedMemory[] = [];
+  let used = 0;
+  for (const { memory } of ranked) {
+    const size = memory.rule.length + 4;
+    if (selected.length >= maxItems || used + size > maxChars) continue;
+    selected.push(memory);
+    used += size;
+  }
+  return selected;
+}
+
+function deterministicFraction(value: string): number {
+  const prefix = createHash("sha256").update(value).digest("hex").slice(0, 8);
+  return Number.parseInt(prefix, 16) / 0xffffffff;
+}
+
+export function selectCanaryCandidate(
+  store: LearningStore,
+  prompt: string,
+  interactionId: string,
+  rate: number,
+): Candidate | undefined {
+  if (deterministicFraction(interactionId) >= rate) return undefined;
+  const promptTokens = new Set(normalizeKeywords([prompt]));
+  return store.candidates
+    .filter((candidate) =>
+      candidate.state === "canary" &&
+      candidate.keywords.some((keyword) => promptTokens.has(keyword))
+    )
+    .sort((left, right) => right.evidenceInteractionIds.length - left.evidenceInteractionIds.length || left.id.localeCompare(right.id))
+    .at(0);
+}
+
+export function recordAttribution(
+  store: LearningStore,
+  attribution: Attribution,
+  maxAttributions: number,
+): LearningStore {
+  const withoutDuplicate = store.historyCursor.attributions.filter(
+    (item) => item.interactionId !== attribution.interactionId,
+  );
+  return {
+    ...store,
+    historyCursor: {
+      ...store.historyCursor,
+      attributions: [...withoutDuplicate, attribution].slice(-maxAttributions),
+    },
+  };
+}
+
+export function memoryPrompt(memories: ApprovedMemory[], candidate?: Candidate): string | undefined {
+  if (memories.length === 0 && !candidate) return undefined;
+  const lines = [
+    "<continuous-learning>",
+    "Apply only when relevant; current user and repository instructions still win.",
+    ...memories.map((memory) => `- ${memory.rule}`),
+    ...(candidate ? [`- [canary] ${candidate.rule}`] : []),
+    "</continuous-learning>",
+  ];
+  return lines.join("\n");
 }

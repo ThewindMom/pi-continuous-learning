@@ -97,7 +97,9 @@ export async function cleanupOrphanedAgentBlocks(
       return "";
     },
   ).trimEnd();
-  if (/(?:pi|senpi)-learned:/.test(next)) {
+  const completeManagedBlocks = /<!-- (?:pi|senpi)-learned:([^\s]+) -->[\s\S]*?<!-- \/(?:pi|senpi)-learned:\1 -->\n?/g;
+  const residualMarkers = next.replace(completeManagedBlocks, "");
+  if (/(?:pi|senpi)-learned:/.test(residualMarkers)) {
     const quarantine = path.join(path.dirname(destination), ".pi-learning-quarantine");
     await atomicWrite(path.join(quarantine, `AGENTS-malformed-${Date.now()}.md`), existing, null);
     await atomicWrite(destination, "", existing);

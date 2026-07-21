@@ -2,6 +2,12 @@ declare module "@mariozechner/pi-coding-agent" {
 export interface ExtensionContext {
 cwd: string;
 hasUI: boolean;
+sessionManager?: {
+  getSessionFile?(): string | undefined;
+  getSessionId?(): string | undefined;
+  getLeafId?(): string | undefined;
+  getEntries?(): unknown[];
+};
 model?: { provider: string; id: string };
     modelRegistry: {
       find(provider: string, model: string): unknown;
